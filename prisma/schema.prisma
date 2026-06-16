@@ -275,23 +275,19 @@ model RefreshToken {
 // ======================================================
 
 model AuditLog {
-  id Int @id @default(autoincrement())
-
-  userId Int
-
-  action String
-
-  entityType String
-
-  entityId Int
-
-  metadata Json?
-
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  schoolId  Int?
+  action    String
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([schoolId])
   @@map("audit_logs")
 }
 
