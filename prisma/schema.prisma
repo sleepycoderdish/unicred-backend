@@ -25,31 +25,32 @@ model School {
 }
 
 model User {
-  id               Int            @id @default(autoincrement())
+  id               Int               @id @default(autoincrement())
   schoolId         Int
-  email            String         @unique
+  email            String            @unique
   role             Role
   name             String
   bio              String?
-  createdAt        DateTime       @default(now())
+  createdAt        DateTime          @default(now())
   deletedAt        DateTime?
-  emailVerified    Boolean        @default(false)
+  emailVerified    Boolean           @default(false)
   githubUrl        String?
-  isActive         Boolean        @default(true)
+  isActive         Boolean           @default(true)
   lastLoginAt      DateTime?
   linkedinUrl      String?
   passwordHash     String
   phoneNumber      String?
   portfolioUrl     String?
   profilePhotoUrl  String?
-  updatedAt        DateTime       @updatedAt
+  updatedAt        DateTime          @updatedAt
   auditLogs        AuditLog[]
-  hodOfDepartments Department[]   @relation("DepartmentHod")
+  hodOfDepartments Department[]      @relation("DepartmentHod")
   faculty          Faculty?
   notifications    Notification[]
   refreshTokens    RefreshToken[]
   student          Student?
-  school           School         @relation(fields: [schoolId], references: [id])
+  school           School            @relation(fields: [schoolId], references: [id])
+  otpVerifications OtpVerification[]
 
   @@index([schoolId])
   @@map("users")
@@ -142,6 +143,25 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model OtpVerification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  email     String
+  otpCode   String
+  otpType   OtpType
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([email])
+  @@index([expiresAt])
+  @@map("otp_verifications")
 }
 
 model AuditLog {
@@ -399,4 +419,10 @@ enum SkillLevel {
   intermediate
   advanced
   expert
+}
+
+enum OtpType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  LOGIN_VERIFICATION
 }

@@ -27,6 +27,8 @@ const {
   refreshHandler,
   logoutHandler,
   logoutAllHandler,
+  verifyOtp, 
+  resendOtp,
 } = require("./auth.controller");
 
 const { loginRateLimiter, refreshRateLimiter } = require("../../middleware/rateLimit.middleware");
@@ -41,6 +43,8 @@ router.post("/register", registerHandler);
 router.post("/login",    loginRateLimiter,   loginHandler);
 router.post("/refresh",  refreshRateLimiter, refreshHandler);
 router.post("/logout",   logoutHandler);
+router.post("/verify-otp", verifyOtp);
+router.post("/resend-otp", resendOtp);
 
 // ── ADMIN-ONLY ────────────────────────────────────────────────────────────────
 

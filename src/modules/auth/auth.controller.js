@@ -188,6 +188,67 @@ async function logoutAllHandler(req, res, next) {
   }
 }
 
+
+/**
+ * --------------------------------------------------------
+ * VERIFY OTP CONTROLLER
+ * --------------------------------------------------------
+ *
+ * Route:
+ * POST /auth/verify-otp
+ *
+ * Request Body:
+ * {
+ *   "email": "student@school.edu",
+ *   "otp": "123456"
+ * }
+ */
+async function verifyOtp(req, res, next) {
+  try {
+    const result = await authService.verifyOtp(
+      req.body
+    );
+
+    return success(
+      res,
+      200,
+      "Email verified successfully",
+      result,
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * --------------------------------------------------------
+ * RESEND OTP CONTROLLER
+ * --------------------------------------------------------
+ *
+ * Route:
+ * POST /auth/resend-otp
+ *
+ * Request Body:
+ * {
+ *   "email": "student@school.edu"
+ * }
+ */
+async function resendOtp(req, res, next) {
+  try {
+    const result = await authService.resendOtp(
+      req.body
+    );
+
+    return success(
+      res,
+      200,
+      "OTP sent successfully",
+      result,
+    );
+  } catch (err) {
+    next(err);
+  }
+}
 module.exports = {
   registerHandler,
   inviteHandler,
@@ -195,4 +256,6 @@ module.exports = {
   refreshHandler,
   logoutHandler,
   logoutAllHandler,
+  verifyOtp, 
+  resendOtp,
 };

@@ -40,6 +40,78 @@ const { signAccessToken } = require("../../utils/jwt");
 const { writeAuditLog, AUDIT_EVENTS } = require("../../utils/audit");
 const { REFRESH_TOKEN_EXPIRES_DAYS } = require("../../config/env");
 
+const {
+  sendVerificationOtp,
+  sendPasswordResetOtp,
+  sendAccountCreatedEmail,
+} = require("../../utils/email");
+
+
+/**
+ * --------------------------------------------------------
+ * generateOtp()
+ * --------------------------------------------------------
+ *
+ * Purpose:
+ * Generates a random 6-digit OTP.
+ *
+ * Example Outputs:
+ * 483921
+ * 125678
+ * 987654
+ *
+ * Why 6 digits?
+ * - Easy for users to type
+ * - Common industry standard
+ * - Enough combinations (900,000)
+ *
+ * Used In:
+ * - Email Verification
+ * - Password Reset
+ * - Future Login Verification
+ *
+ * Returns:
+ * String
+ */
+function generateOtp() {
+  return Math.floor(
+    100000 + Math.random() * 900000
+  ).toString();
+}
+
+/**
+ * --------------------------------------------------------
+ * getOtpExpiry()
+ * --------------------------------------------------------
+ *
+ * Purpose:
+ * Calculates OTP expiration timestamp.
+ *
+ * Current Expiry:
+ * 10 minutes
+ *
+ * Example:
+ *
+ * Current Time:
+ * 10:00 AM
+ *
+ * Expiry Time:
+ * 10:10 AM
+ *
+ * Why expire OTPs?
+ * - Prevent OTP reuse
+ * - Improve security
+ * - Reduce attack window
+ *
+ * Returns:
+ * Date Object
+ */
+function getOtpExpiry() {
+  return new Date(
+    Date.now() + 10 * 60 * 1000
+  );
+}
+
 // ─────────────────────────────────────────────
 // HELPER: expiry date for a new refresh token
 // ─────────────────────────────────────────────
@@ -99,6 +171,7 @@ async function register({ email, password, name }) {
     throw err;
   }
 
+
   // 3. Hash the password
   const passwordHash = await hashPassword(password);
 
@@ -110,8 +183,64 @@ async function register({ email, password, name }) {
       name,
       role: "student",        // ← hardcoded, never from client
       schoolId: school.id,    // ← from DB lookup, never from client
+      emailVerified: false,
     },
   });
+
+  /**
+ * --------------------------------------------------------
+ * Generate Email Verification OTP
+ * --------------------------------------------------------
+ *
+ * Every self-registered user must verify
+ * ownership of their email address.
+ *
+ * Flow:
+ *
+ * User Registers
+ *      ↓
+ * OTP Generated
+ *      ↓
+ * OTP Saved To Database
+ *      ↓
+ * OTP Sent Via Email
+ *      ↓
+ * User Verifies Email
+ */
+const otp = generateOtp();
+
+/**
+ * Save OTP inside OtpVerification table.
+ *
+ * otpType:
+ * EMAIL_VERIFICATION
+ *
+ * expiresAt:
+ * Current Time + 10 Minutes
+ */
+await prisma.otpVerification.create({
+  data: {
+    userId: user.id,
+    email: user.email,
+    otpCode: otp,
+    otpType: "EMAIL_VERIFICATION",
+    expiresAt: getOtpExpiry(),
+  },
+});
+
+/**
+ * Send OTP to user's email.
+ *
+ * Development:
+ * Logs OTP in terminal.
+ *
+ * Production:
+ * Sends actual email via Gmail.
+ */
+await sendVerificationOtp(
+  user.email,
+  otp
+);
 
   // 5. Audit log
   await writeAuditLog({
@@ -129,6 +258,237 @@ async function register({ email, password, name }) {
     schoolId: user.schoolId,
   };
 }
+
+/**
+
+* ---
+* VERIFY EMAIL OTP
+* ---
+*
+* Purpose:
+* Verify ownership of email address.
+*
+* Flow:
+*
+* User submits:
+* email + otp
+*
+* ```
+   ↓
+  ```
+*
+* Find User
+*
+* ```
+   ↓
+  ```
+*
+* Find Latest OTP
+*
+* ```
+   ↓
+  ```
+*
+* Check:
+* * Exists?
+* * Expired?
+* * Already Used?
+*
+* ```
+   ↓
+  ```
+*
+* Mark OTP Used
+*
+* ```
+   ↓
+  ```
+*
+* Update User
+* emailVerified = true
+*
+* ```
+   ↓
+  ```
+*
+* Success
+  */
+  async function verifyOtp({ email, otp }) {
+  const user = await prisma.user.findUnique({
+  where: { email },
+  });
+
+if (!user) {
+const err = new Error("User not found");
+err.statusCode = 404;
+throw err;
+}
+
+const otpRecord =
+await prisma.otpVerification.findFirst({
+where: {
+userId: user.id,
+email,
+otpCode: otp,
+otpType: "EMAIL_VERIFICATION",
+},
+orderBy: {
+createdAt: "desc",
+},
+});
+
+if (!otpRecord) {
+const err = new Error("Invalid OTP");
+err.statusCode = 400;
+throw err;
+}
+
+if (otpRecord.usedAt) {
+const err = new Error("OTP already used");
+err.statusCode = 400;
+throw err;
+}
+
+if (otpRecord.expiresAt < new Date()) {
+const err = new Error("OTP has expired");
+err.statusCode = 400;
+throw err;
+}
+
+await prisma.otpVerification.update({
+where: {
+id: otpRecord.id,
+},
+data: {
+usedAt: new Date(),
+},
+});
+
+await prisma.user.update({
+where: {
+id: user.id,
+},
+data: {
+emailVerified: true,
+},
+});
+
+return {
+success: true,
+message: "Email verified successfully",
+};
+}
+
+
+  /**
+
+* ---
+* RESEND EMAIL VERIFICATION OTP
+* ---
+*
+* Purpose:
+* Generate and send a fresh OTP when:
+* * User didn't receive email
+* * Previous OTP expired
+* * User requests a new OTP
+*
+* Flow:
+*
+* Email
+* ↓
+* Find User
+* ↓
+* Already Verified?
+* ↓
+* Delete Old Unused OTPs
+* ↓
+* Generate New OTP
+* ↓
+* Save New OTP
+* ↓
+* Send Email
+  */
+  async function resendOtp({ email }) {
+  /**
+
+  * Find user by email.
+    */
+    const user = await prisma.user.findUnique({
+    where: { email },
+    });
+
+if (!user) {
+const err = new Error("User not found");
+err.statusCode = 404;
+throw err;
+}
+
+/**
+
+* Verified users do not need OTPs.
+  */
+  if (user.emailVerified) {
+  const err = new Error(
+  "Email is already verified"
+  );
+
+err.statusCode = 400;
+throw err;
+
+
+}
+
+/**
+
+* Remove all previous unused
+* email verification OTPs.
+*
+* This prevents multiple active
+* OTPs existing simultaneously.
+  */
+  await prisma.otpVerification.deleteMany({
+  where: {
+  userId: user.id,
+  otpType: "EMAIL_VERIFICATION",
+  usedAt: null,
+  },
+  });
+
+/**
+
+* Generate fresh OTP.
+  */
+  const otp = generateOtp();
+
+/**
+
+* Store OTP.
+  */
+  await prisma.otpVerification.create({
+  data: {
+  userId: user.id,
+  email: user.email,
+  otpCode: otp,
+  otpType: "EMAIL_VERIFICATION",
+  expiresAt: getOtpExpiry(),
+  },
+  });
+
+/**
+
+* Send email.
+  */
+  await sendVerificationOtp(
+  user.email,
+  otp
+  );
+
+return {
+success: true,
+message: "OTP resent successfully",
+};
+}
+
 
 // ─────────────────────────────────────────────
 // INVITE — admin creates faculty/hod/admin accounts
@@ -188,8 +548,33 @@ async function invite({ email, name, role }, adminUser) {
       name,
       role,               // faculty | hod | admin — validated above
       schoolId,           // from admin's JWT, not from request body
+      emailVerified : true ,
     },
   });
+
+  /**
+ * --------------------------------------------------------
+ * SEND ACCOUNT CREATED EMAIL
+ * --------------------------------------------------------
+ *
+ * Faculty/HOD/Admin accounts are created
+ * by an administrator.
+ *
+ * No OTP is required.
+ *
+ * The user receives:
+ * - Email
+ * - Temporary Password
+ * - Role
+ * - School Information
+ */
+await sendAccountCreatedEmail({
+  email,
+  name,
+  password: tempPassword,
+  role,
+  schoolName: school.name,
+});
 
   // 7. Audit log — record who invited whom
   await writeAuditLog({
@@ -233,6 +618,39 @@ async function login({ email, password }, deviceInfo = {}) {
     err.statusCode = 401;
     throw err;
   }
+
+  /**
+ * --------------------------------------------------------
+ * Email Verification Check
+ * --------------------------------------------------------
+ *
+ * Security Rule:
+ *
+ * Unverified users are NOT allowed
+ * to log in.
+ *
+ * Registration Flow:
+ *
+ * Register
+ *    ↓
+ * Verify Email
+ *    ↓
+ * Login
+ *
+ * Invited Faculty/HOD:
+ * emailVerified=true at creation,
+ * therefore this check passes.
+ */
+
+  if (!user.emailVerified) {
+  const err = new Error(
+    "Please verify your email before logging in"
+  );
+
+  err.statusCode = 401;
+
+  throw err;
+}
 
   if (!user.isActive || user.deletedAt) {
     const err = new Error("This account is inactive");
@@ -480,4 +898,6 @@ module.exports = {
   refresh,
   logout,
   logoutAll,
+  verifyOtp,
+  resendOtp,
 };
