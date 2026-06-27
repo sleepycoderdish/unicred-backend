@@ -60,6 +60,9 @@ const studentResultRoutes  =    require("../modules/results/student-results.rout
 
 router.use("/auth", authRoutes);
 
+// Student views their results and CGPA (mounts under /students/...)
+router.use("/students", studentResultRoutes);
+
 router.use("/students", studentRoutes);
 
 router.use("/departments", departmentRoutes);
@@ -97,8 +100,6 @@ router.use("/results", resultsRoutes);
 // Student applies for reappear, HOD approves/rejects, faculty uploads reappear marks
 router.use("/reappear", reappearRoutes);
  
-// Student views their results and CGPA (mounts under /students/...)
-router.use("/students", studentResultRoutes);
  
 
 module.exports = router;

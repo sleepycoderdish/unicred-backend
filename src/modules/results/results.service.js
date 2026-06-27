@@ -72,8 +72,15 @@ async function submitMarks(facultyId, schoolId, publicationId, subjectId, marks,
   const pub = await repo.getPublicationById(publicationId, schoolId);
   if (!pub) throw new AppError(404, "Publication not found");
 
-  if (pub.status === "frozen" || pub.status === "published") {
+  // For NORMAL marks: block if frozen or published.
+  // For REAPPEAR marks: allow even when published — reappear happens AFTER publish.
+  if (!isReappear && (pub.status === "frozen" || pub.status === "published")) {
     throw new AppError(403, "Publication is frozen/published. Ask HOD to unfreeze.");
+  }
+
+  // Reappear marks can only be submitted on an already-published result
+  if (isReappear && pub.status !== "published") {
+    throw new AppError(403, "Reappear marks can only be submitted after the result is published.");
   }
 
   // Verify faculty is assigned to this subject
@@ -103,7 +110,7 @@ async function submitMarks(facultyId, schoolId, publicationId, subjectId, marks,
   if (!semester) throw new AppError(500, "Semester record not found");
 
   const { allSubmitted, totalSubjects } = await repo.upsertMarks(
-    publicationId, subjectId, semester.id, marksWithGrades, isReappear
+    publicationId, facultyId, subjectId, semester.id, marksWithGrades, isReappear
   );
 
   // If all subjects submitted → notify HOD
@@ -116,6 +123,29 @@ async function submitMarks(facultyId, schoolId, publicationId, subjectId, marks,
         `All ${totalSubjects} subjects submitted for Semester ${pub.semesterNumber}. Ready for review.`,
         `/results/publications/${publicationId}`
       );
+    }
+  }
+
+  // For REAPPEAR marks: recompute each student's CGPA and notify them.
+  // (The original failing mark was already invalidated when HOD approved the reappear.)
+  if (isReappear) {
+    const reappearService = require("../reappear/reappear.service");
+    for (const m of marksWithGrades) {
+      // Recompute SGPA + CGPA now that the new reappear mark is in
+      await reappearService._recomputeGpa(m.studentId, schoolId, semester.id);
+
+      // Notify the student their reappear result is out
+      const student = await prisma.student.findFirst({
+        where: { id: m.studentId }, include: { user: { select: { id: true } } },
+      });
+      if (student?.user?.id) {
+        await notify(
+          student.user.id,
+          "REAPPEAR_RESULT_PUBLISHED",
+          `Your reappear result for ${subject.name} is published. New grade: ${m.grade}.`,
+          `/results/session/${pub.sessionId}`
+        );
+      }
     }
   }
 

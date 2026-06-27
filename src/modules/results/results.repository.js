@@ -15,9 +15,11 @@ async function createPublication(schoolId, sessionId, departmentId, batchYear, s
       data: { schoolId, sessionId, departmentId, batchYear, semesterNumber, status: "draft" },
     });
 
-    // Find all faculty assigned to this session+batch+semester
+    // Find faculty assigned to this session+batch+semester scoped to this department only.
+    // Without departmentId, other departments' assignments would generate orphan
+    // FacultyResultSubmission rows that can never be submitted, blocking publication.
     const assignments = await tx.facultyAssignment.findMany({
-      where: { schoolId, sessionId, batchYear, semesterNumber },
+      where: { schoolId, sessionId, departmentId, batchYear, semesterNumber },
     });
 
     // Auto-create one submission tracker row per assignment
@@ -127,7 +129,7 @@ async function getSubmittableSubjects(facultyId, schoolId) {
  * Flips FacultyResultSubmission.isSubmitted = true.
  * Returns whether ALL subjects are now submitted.
  */
-async function upsertMarks(publicationId, subjectId, semesterId, marksWithGrades, isReappear) {
+async function upsertMarks(publicationId, facultyId, subjectId, semesterId, marksWithGrades, isReappear) {
   return prisma.$transaction(async (tx) => {
     // Delete existing marks for this subject (non-invalidated only)
     await tx.subjectMark.deleteMany({
@@ -150,9 +152,10 @@ async function upsertMarks(publicationId, subjectId, semesterId, marksWithGrades
       })),
     });
 
-    // Flip isSubmitted = true for this subject's submission tracker
+    // Flip isSubmitted = true only for this faculty's row to avoid flipping
+    // a co-assigned faculty's row for the same subject.
     await tx.facultyResultSubmission.updateMany({
-      where: { publicationId, subjectId },
+      where: { publicationId, facultyId, subjectId },
       data: { isSubmitted: true, submittedAt: new Date() },
     });
 
