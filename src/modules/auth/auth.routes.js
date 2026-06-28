@@ -83,7 +83,7 @@ router.post("/verify-reset-otp", otpRateLimiter, verifyResetOtp);
 
 // schoolId comes from admin's JWT (req.user.schoolId) — never from body
 // Body: { email, name, role }  where role ∈ { "faculty", "hod", "admin" }
-router.post("/invite", authenticate, requireRole("admin"), inviteHandler);
+router.post("/invite", authenticate, requireRole("admin" , "hod"), inviteHandler);
 
 // ── AUTHENTICATED (any role) ──────────────────────────────────────────────────
 

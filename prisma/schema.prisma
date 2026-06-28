@@ -144,6 +144,8 @@ model Faculty {
   department               Department                @relation(fields: [departmentId], references: [id])
   user                     User                      @relation(fields: [userId], references: [id])
   achievements             Achievement[]             @relation("VerifiedBy")
+  // Achievements students sent to THIS faculty for verification (Option B).
+  assignedReviews          AchievementReview[]       @relation("AssignedReviews")
   announcements            Announcement[]
   facultyAssignments       FacultyAssignment[]
   facultyResultSubmissions FacultyResultSubmission[]
@@ -633,11 +635,46 @@ model Achievement {
   session             AcademicSession?  @relation(fields: [sessionId], references: [id])
   faculty             Faculty?          @relation("VerifiedBy", fields: [verifiedBy], references: [id])
   internship          Internship?
+  // One row per faculty the student sent this achievement to (Option B).
+  // Overall `status` above is a rollup of these per-faculty verdicts.
+  reviews             AchievementReview[]
 
   @@index([studentId])
   @@index([verifiedBy], map: "achievements_verifiedBy_fkey")
   @@index([sessionId])
   @@map("achievements")
+}
+
+// One review request = one faculty the student asked to verify one achievement.
+// This is the join table that makes achievements "many faculties" (Option B).
+//
+// Each row carries that ONE faculty's own verdict (status + remark), so two
+// faculties reviewing the same achievement never overwrite each other.
+//
+// The parent Achievement.status is a ROLLUP derived from these rows:
+//   - approved  : as soon as ANY one faculty approves
+//   - rejected  : only when EVERY assigned faculty has rejected
+//   - pending   : otherwise (still waiting on someone)
+//
+// Mirrors the FacultyResultSubmission pattern (one tracking row per faculty).
+model AchievementReview {
+  id            Int               @id @default(autoincrement())
+  achievementId Int
+  facultyId     Int
+  status        AchievementStatus @default(pending) // THIS faculty's verdict
+  remark        String? // Required on reject, optional on approve
+  reviewedAt    DateTime? // Set when this faculty approves/rejects
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  faculty     Faculty     @relation("AssignedReviews", fields: [facultyId], references: [id])
+
+  // A given faculty can only be asked once per achievement.
+  @@unique([achievementId, facultyId])
+  @@index([achievementId])
+  @@index([facultyId])
+  @@map("achievement_reviews")
 }
 
 model Internship {

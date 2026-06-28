@@ -51,6 +51,8 @@ const gradingRoutes        =    require("../modules/grading/grading.routes");
 const resultsRoutes        =    require("../modules/results/results.routes");
 const reappearRoutes       =    require("../modules/reappear/reappear.routes");
 const studentResultRoutes  =    require("../modules/results/student-results.routes");
+const achievementRoutes    =    require("../modules/achievements/achievements.routes");
+const internshipRoutes     =    require("../modules/internships/internships.routes");
 
 /*
 |--------------------------------------------------------------------------
@@ -99,6 +101,12 @@ router.use("/results", resultsRoutes);
  
 // Student applies for reappear, HOD approves/rejects, faculty uploads reappear marks
 router.use("/reappear", reappearRoutes);
+
+// Achievements — students upload, any faculty verifies, HOD views dept stats
+router.use("/achievements", achievementRoutes);
+
+// Internships — students add (optionally linked to an achievement), HOD views
+router.use("/internships", internshipRoutes);
  
  
 
