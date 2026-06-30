@@ -59,7 +59,7 @@ const transitionStatus = asyncHandler(async (req, res) => {
  * Full result table for HOD review.
  */
 const getSummary = asyncHandler(async (req, res) => {
-  const data = await service.getPublication(Number(req.params.id), req.user.schoolId);
+  const data = await service.getResultSummary(Number(req.params.id), req.user.schoolId);
   success(res, 200, "Summary fetched", data);
 });
 
@@ -171,9 +171,24 @@ const getStudentCgpa = asyncHandler(async (req, res) => {
   success(res, 200, "CGPA history fetched", data);
 });
 
+/**
+ * GET /api/results/roster?publicationId=X&subjectId=Y
+ * Faculty's full student roster for a subject — used to render the mark-entry
+ * table, including students who haven't been marked yet.
+ */
+const getRoster = asyncHandler(async (req, res) => {
+  const publicationId = Number(req.query.publicationId);
+  const subjectId = Number(req.query.subjectId);
+  if (!publicationId || !subjectId) {
+    return res.status(400).json({ success: false, message: "publicationId and subjectId query params required" });
+  }
+  const data = await service.getRoster(req.faculty.id, req.user.schoolId, publicationId, subjectId);
+  success(res, 200, "Roster fetched", data);
+});
+
 module.exports = {
   createPublication, listPublications, getPublication, transitionStatus,
   getSummary, getPending, getFailures,
   getMySubjects, submitMarks, getSubmittedMarks, editMarks, submitReappearMarks,
-  getStudentResults, getStudentResultsBySession, getStudentCgpa,
+  getStudentResults, getStudentResultsBySession, getStudentCgpa, getRoster,
 };

@@ -21,6 +21,7 @@ router.get("/publications/:id/pending",       requireRole("hod"), c.getPending);
 router.get("/publications/:id/failures",      requireRole("hod"), c.getFailures);
 
 // ─── Faculty: Mark Upload ─────────────────────────────────────────────────────
+router.get("/roster",                         requireRole("faculty", "hod"), facultyContext, c.getRoster);
 router.get("/my-subjects",                    requireRole("faculty", "hod"), facultyContext, c.getMySubjects);
 router.post("/submit",                        requireRole("faculty", "hod"), facultyContext, c.submitMarks);
 router.get("/submissions/:subjectId",         requireRole("faculty", "hod"), facultyContext, c.getSubmittedMarks);

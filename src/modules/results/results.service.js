@@ -254,6 +254,31 @@ async function getStudentCgpa(studentId) {
   return repo.getAllCgpaRecords(studentId);
 }
 
+/**
+ * getRoster — full student roster for a subject's mark-entry screen.
+ * Verifies the faculty is assigned to this subject before returning anything,
+ * same security check used in getFacultyMarks.
+ */
+async function getRoster(facultyId, schoolId, publicationId, subjectId) {
+  const pub = await repo.getPublicationById(publicationId, schoolId);
+  if (!pub) throw new AppError(404, "Publication not found");
+
+  // Same assignment check used in submitMarks — only the assigned faculty
+  // (or HOD acting as faculty) can view the roster for this subject.
+  const assignment = await prisma.facultyAssignment.findFirst({
+    where: { schoolId, sessionId: pub.sessionId, facultyId, subjectId, batchYear: pub.batchYear, semesterNumber: pub.semesterNumber },
+  });
+  if (!assignment) throw new AppError(403, "You are not assigned to this subject for this session");
+
+  return repo.getRosterForSubject(schoolId, pub.sessionId, pub.batchYear, pub.semesterNumber, publicationId, subjectId);
+}
+
+async function getResultSummary(publicationId, schoolId) {
+  const pub = await repo.getPublicationById(publicationId, schoolId);
+  if (!pub) throw new AppError(404, "Publication not found");
+  return repo.getResultSummary(publicationId);
+}
+
 module.exports = {
   createPublication,
   getPublications,
@@ -266,4 +291,6 @@ module.exports = {
   getFacultyMarks,
   getStudentResults,
   getStudentCgpa,
+  getRoster,
+  getResultSummary,
 };

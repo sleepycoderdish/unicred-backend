@@ -244,6 +244,71 @@ async function getStudentResults(studentId, sessionId) {
   });
 }
 
+/**
+ * getRosterForSubject — students registered for the publication's session/batch/semester,
+ * with their existing mark for this subject attached (null if not submitted yet).
+ *
+ * This is the roster the mark-entry screen needs — independent of whether
+ * marks have been submitted. Existing marks are LEFT-JOINED in manually
+ * (Prisma has no relation between Student and SubjectMark filtered by subjectId,
+ * so we fetch both lists and merge them by studentId in JS).
+ */
+async function getRosterForSubject(schoolId, sessionId, batchYear, semesterNumber, publicationId, subjectId) {
+  // 1. Registered students for this session+batch+semester
+  const registrations = await prisma.studentSessionRegistration.findMany({
+    where: { schoolId, sessionId, batchYear, semesterNumber },
+    include: {
+      student: {
+        include: { user: { select: { name: true, email: true } } },
+      },
+    },
+    orderBy: { student: { rollNo: "asc" } },
+  });
+
+  // 2. Existing marks for this subject+publication (only non-invalidated)
+  const existingMarks = await prisma.subjectMark.findMany({
+    where: { publicationId, subjectId, invalidatedAt: null, isReappear: false },
+  });
+
+  // Map studentId -> mark row, for O(1) lookup while merging
+  const markByStudentId = new Map(existingMarks.map((m) => [m.studentId, m]));
+
+  // 3. Merge: every registered student, with mark fields null if not submitted
+  return registrations.map((reg) => {
+    const mark = markByStudentId.get(reg.studentId);
+    return {
+      student: {
+        id: reg.student.id,
+        rollNo: reg.student.rollNo,
+        user: reg.student.user,
+      },
+      marks: mark?.marks ?? null,
+      grade: mark?.grade ?? null,
+      gradePoint: mark?.gradePoint ?? null,
+    };
+  });
+}
+
+async function getResultSummary(publicationId) {
+  const marks = await prisma.subjectMark.findMany({
+    where: { publicationId, invalidatedAt: null },
+    include: {
+      student: { include: { user: { select: { name: true } } } },
+      subject: { select: { name: true, courseCode: true } },
+    },
+    orderBy: [{ subjectId: "asc" }, { student: { rollNo: "asc" } }],
+  });
+
+  const submissions = await prisma.facultyResultSubmission.findMany({
+    where: { publicationId },
+    include: { faculty: { include: { user: { select: { name: true } } } } },
+  });
+
+  const facultyBySubject = new Map(submissions.map((s) => [s.subjectId, s.faculty]));
+
+  return marks.map((m) => ({ ...m, faculty: facultyBySubject.get(m.subjectId) ?? null }));
+}
+
 module.exports = {
   createPublication,
   findPublicationDuplicate,
@@ -261,4 +326,6 @@ module.exports = {
   upsertCgpaRecord,
   getSemesterByNumber,
   getStudentResults,
+  getRosterForSubject,
+  getResultSummary,
 };

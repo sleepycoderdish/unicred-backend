@@ -2,7 +2,7 @@
 const prisma = require("../src/config/db");
 
 async function main() {
-  const schoolId = 60001; // your school ID
+  const schoolId = 90001; // your school ID
 
   const semesters = [1,2,3,4,5,6,7,8].map((num) => ({
     schoolId,
