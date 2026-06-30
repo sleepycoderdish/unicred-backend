@@ -43,7 +43,7 @@ const getMySession = asyncHandler(async (req, res) => {
     req.user.schoolId
   );
 
-  return success(res, 200 , session);
+  return success(res, 200, "Session fetched successfully", session);
 });
 
 /**
@@ -58,7 +58,34 @@ const getStudentsInSession = asyncHandler(async (req, res) => {
     req.query
   );
 
-  return success(res, 200 , students);
+  return success(res, 200, "Students fetched successfully", students);
+});
+
+/**
+ * PATCH /api/students/registration/:id/detain
+ * HOD marks a student's registration as "detained".
+ * Detained students are skipped during automatic semester promotion.
+ */
+const detainStudent = asyncHandler(async (req, res) => {
+  const result = await service.detainStudent(
+    req.user.schoolId,
+    req.params.id
+  );
+
+  return success(res, 200, result);
+});
+
+/**
+ * PATCH /api/students/registration/:id/undetain
+ * HOD removes a student's detention, flipping them back to "active".
+ */
+const undetainStudent = asyncHandler(async (req, res) => {
+  const result = await service.undetainStudent(
+    req.user.schoolId,
+    req.params.id
+  );
+
+  return success(res, 200, result);
 });
 
 module.exports = {
@@ -66,4 +93,6 @@ module.exports = {
   bulkRegisterStudents,
   getMySession,
   getStudentsInSession,
+  detainStudent,
+  undetainStudent,
 };

@@ -48,4 +48,20 @@ router.get(
   controller.getStudentsInSession
 );
 
+// HOD detains a student — marks their registration as "detained" so they are
+// skipped during automatic semester promotion when the session completes
+router.patch(
+  "/registration/:id/detain",
+  requireRole("hod"),
+  controller.detainStudent
+);
+
+// HOD undetains a student — flips their registration back to "active"
+// so they will be promoted when the session completes
+router.patch(
+  "/registration/:id/undetain",
+  requireRole("hod"),
+  controller.undetainStudent
+);
+
 module.exports = router;

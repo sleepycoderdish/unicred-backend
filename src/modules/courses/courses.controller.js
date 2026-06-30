@@ -15,7 +15,7 @@ const createSubject = asyncHandler(async (req, res) => {
     req.body
   );
 
-  return success(res, 201 , subject);
+  return success(res, 201, "Subject created successfully", subject);
 });
 
 const getAllSubjects = asyncHandler(async (req, res) => {
@@ -28,7 +28,7 @@ const getAllSubjects = asyncHandler(async (req, res) => {
     includeInactive
   );
 
-  return success(res, 200 , subjects);
+  return success(res, 200, "Subjects fetched successfully", subjects);
 });
 
 const getSubjectById = asyncHandler(async (req, res) => {
@@ -38,7 +38,7 @@ const getSubjectById = asyncHandler(async (req, res) => {
     req.faculty.departmentId
   );
 
-  return success(res, 200 , subject);
+  return success(res, 200, "Subject fetched successfully", subject);
 });
 
 // Any authenticated role can view subject details
@@ -48,7 +48,7 @@ const getSubjectForAnyRole = asyncHandler(async (req, res) => {
     req.user.schoolId
   );
 
-  return success(res, 200 , subject);
+  return success(res, 200, "Subject fetched successfully", subject);
 });
 
 const updateSubject = asyncHandler(async (req, res) => {
@@ -59,7 +59,7 @@ const updateSubject = asyncHandler(async (req, res) => {
     req.body
   );
 
-  return success(res, 200 , subject);
+  return success(res, 200, "Subject updated successfully", subject);
 });
 
 const deactivateSubject = asyncHandler(async (req, res) => {
@@ -69,7 +69,7 @@ const deactivateSubject = asyncHandler(async (req, res) => {
     req.faculty.departmentId
   );
 
-  return success(res, 200 , result);
+  return success(res, 200, "Subject deactivated successfully", result);
 });
 
 // ── Offerings ─────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ const createOffering = asyncHandler(async (req, res) => {
     req.body
   );
 
-  return success(res, 201 , offering);
+  return success(res, 201, "Course offering created successfully", offering);
 });
 
 const getOfferings = asyncHandler(async (req, res) => {
@@ -92,7 +92,7 @@ const getOfferings = asyncHandler(async (req, res) => {
     req.query  // May contain ?semesterNumber=3&batchYear=2022
   );
 
-  return success(res, 200 , offerings);
+  return success(res, 200, "Offerings fetched successfully", offerings);
 });
 
 const deleteOffering = asyncHandler(async (req, res) => {
@@ -101,7 +101,7 @@ const deleteOffering = asyncHandler(async (req, res) => {
     req.user.schoolId
   );
 
-  return success(res, 200 , result);
+  return success(res, 200, "Offering removed successfully", result);
 });
 
 module.exports = {

@@ -338,6 +338,69 @@ async function updateSession(sessionId, schoolId, departmentId, body) {
   return repo.findById(id, schoolId, departmentId);
 }
 
+// =============================================================================
+// STUDENT PROMOTION HELPER
+// =============================================================================
+
+/**
+ * promoteStudentsOnCompletion
+ *
+ * Called automatically when a session is marked "completed".
+ * Runs everything inside a single database transaction so either
+ * ALL steps succeed or NONE of them are applied — no half-complete state.
+ *
+ * What it does, step by step:
+ *   1. Marks the academic session as "completed"
+ *   2. Finds all StudentSessionRegistration rows in this session
+ *      that are still "active"
+ *      (detained students have status "detained" so they are automatically
+ *       skipped — their semester does NOT increment)
+ *   3. Increments currentSemester by 1 for each promoted student
+ *   4. Flips those registration records from "active" → "completed"
+ *
+ * Safe to re-run: if all registrations are already "completed" the
+ * student/registration updates match zero rows and nothing breaks.
+ *
+ * @param {number} sessionId    - The session being completed
+ * @param {number} schoolId     - School isolation
+ * @param {number} departmentId - Department isolation
+ */
+async function promoteStudentsOnCompletion(sessionId, schoolId, departmentId) {
+  await prisma.$transaction(async (tx) => {
+    // Step 1 — Mark the session itself as "completed"
+    await tx.academicSession.updateMany({
+      where: { id: sessionId, schoolId, departmentId },
+      data: { status: "completed" },
+    });
+
+    // Step 2 — Find all ACTIVE registrations in this session.
+    //           Detained registrations have status "detained" so they are
+    //           naturally excluded from this query.
+    const activeRegistrations = await tx.studentSessionRegistration.findMany({
+      where: { sessionId, schoolId, status: "active" },
+      select: { id: true, studentId: true },
+    });
+
+    // Nothing to promote — safe early exit (idempotent on re-run)
+    if (activeRegistrations.length === 0) return;
+
+    const studentIds      = activeRegistrations.map((r) => r.studentId);
+    const registrationIds = activeRegistrations.map((r) => r.id);
+
+    // Step 3 — Increment currentSemester for every promoted student
+    await tx.student.updateMany({
+      where: { id: { in: studentIds }, schoolId },
+      data: { currentSemester: { increment: 1 } },
+    });
+
+    // Step 4 — Flip those registrations from "active" → "completed"
+    await tx.studentSessionRegistration.updateMany({
+      where: { id: { in: registrationIds } },
+      data: { status: "completed" },
+    });
+  });
+}
+
 /**
  * Transition a session's status.
  *
@@ -348,7 +411,7 @@ async function updateSession(sessionId, schoolId, departmentId, body) {
  *
  * Allowed transitions (from ALLOWED_TRANSITIONS map above):
  *   upcoming  → active
- *   active    → completed
+ *   active    → completed  (also triggers student promotion via helper above)
  *   completed → archived
  *   archived  → (nothing — terminal state)
  *
@@ -411,12 +474,15 @@ async function updateSessionStatus(sessionId, schoolId, departmentId, newStatus)
   }
 
   // ── Run the transition ────────────────────────────────────────────────────
-  await repo.updateSessionStatus(id, schoolId, departmentId, newStatus);
+  // Completing a session also promotes eligible students — use the special
+  // transaction helper. All other transitions are plain status updates.
+  if (newStatus === "completed") {
+    await promoteStudentsOnCompletion(id, schoolId, departmentId);
+  } else {
+    await repo.updateSessionStatus(id, schoolId, departmentId, newStatus);
+  }
 
-  const result = await repo.findById(id, schoolId, departmentId);
-console.log('findById result:', result);
-console.log('looking for — id:', id, 'schoolId:', schoolId, 'departmentId:', departmentId);
-return result;
+  return repo.findById(id, schoolId, departmentId);
 }
 
 // =============================================================================

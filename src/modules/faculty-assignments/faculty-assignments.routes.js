@@ -41,6 +41,19 @@ router.get(
   controller.getAllAssignments
 );
 
+// IMPORTANT: /student/subject/:subjectId must be registered BEFORE /:id.
+// If /:id came first, Express would match "student" as the id param and
+// route the request to the wrong handler.
+//
+// Student asks: "Who teaches subject 12 in MY session?"
+// The session/batch/semester scope is derived from the student's own
+// active registration — the student cannot supply or tamper with those values.
+router.get(
+  "/student/subject/:subjectId",
+  requireRole("student"),
+  controller.getFacultyForStudentSubject
+);
+
 router.patch(
   "/:id",
   requireRole("hod"),

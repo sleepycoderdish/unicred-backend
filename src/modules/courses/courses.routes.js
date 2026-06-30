@@ -56,7 +56,7 @@ router.post(
 
 router.get(
   "/offerings/:sessionId",
-  requireRole("hod", "faculty"),
+  requireRole("hod", "faculty" , "student"),
   controller.getOfferings
 );
 

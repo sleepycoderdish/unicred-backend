@@ -120,7 +120,7 @@ async function createAssignment(
   }
 
   // ── Check for duplicate assignment ────────────────────────────────────────
-  const duplicate = await repo.findDuplicate(sid, fid, subId, batch);
+  const duplicate = await repo.findDuplicate(schoolId, sid, fid, subId, batch);
 
   if (duplicate) {
     throw new AppError(
@@ -215,6 +215,7 @@ async function getMyAssignments(userId, schoolId, query) {
 async function updateAssignment(assignmentId, schoolId, body) {
   const id = parseInt(assignmentId);
 
+  // Fetch the existing assignment (must include subject + session for the notify message below)
   const existing = await repo.findById(id, schoolId);
 
   if (!existing) {
@@ -241,7 +242,7 @@ async function updateAssignment(assignmentId, schoolId, body) {
     throw new AppError(400, "No valid fields provided for update.");
   }
 
-  // If changing faculty, validate new faculty exists
+  // If changing faculty, validate the new faculty exists in this school
   if (data.facultyId) {
     const newFaculty = await getFacultyById(data.facultyId, schoolId);
 
@@ -249,14 +250,21 @@ async function updateAssignment(assignmentId, schoolId, body) {
       throw new AppError(404, "New faculty member not found in this school.");
     }
 
-    // Notify newly assigned faculty
-    await notify(
-      faculty.user.id,
-      "SUBJECT_ASSIGNED",
-      `You have been assigned to teach ${assignment.subject.name} ` +
-        `(${assignment.subject.courseCode}) for ${assignment.session.name}.`,
-      "/faculty/assignments",
-    );
+    // Notify the newly assigned faculty.
+    // Use "newFaculty" (not "faculty") and "existing" (not "assignment") —
+    // those were the undefined variables causing the 500 crash.
+    // Wrapped in try/catch so a notification failure never blocks the update.
+    try {
+      await notify(
+        newFaculty.user.id,
+        "SUBJECT_ASSIGNED",
+        `You have been assigned to teach ${existing.subject.name} ` +
+          `(${existing.subject.courseCode}) for ${existing.session.name}.`,
+        "/faculty/assignments",
+      );
+    } catch (error) {
+      console.error("Failed to notify reassigned faculty:", error);
+    }
   }
 
   const result = await repo.updateAssignment(id, schoolId, data);
@@ -318,6 +326,79 @@ async function deleteAssignment(assignmentId, schoolId) {
 }
 
 // =============================================================================
+// STUDENT-FACING: WHO TEACHES MY SUBJECT?
+// =============================================================================
+
+/**
+ * getFacultyForStudentSubject
+ *
+ * Answers the question: "Which faculty member teaches subject X in MY session?"
+ *
+ * Why is this scoped to the student's OWN active registration?
+ *   A student must never be able to query faculty assignments for a different
+ *   batch year, semester, or session — that would expose other cohorts' data.
+ *
+ *   Instead of accepting sessionId/batchYear/semesterNumber as params (which
+ *   a malicious user could tamper with), we derive those values from the
+ *   student's own active registration in the database.
+ *   This makes the scope entirely server-enforced, not client-supplied.
+ *
+ * Flow:
+ *   userId (JWT) → Student record → active Registration
+ *     → { sessionId, batchYear, semesterNumber }
+ *       → FacultyAssignment for this exact context
+ *
+ * @param {number} userId    - From JWT (req.user.userId)
+ * @param {number} schoolId  - From JWT (req.user.schoolId)
+ * @param {number|string} subjectId - From URL params
+ * @returns {Promise<Object>} - The faculty assignment with full faculty profile
+ */
+async function getFacultyForStudentSubject(userId, schoolId, subjectId) {
+  // Step 1: Resolve userId → Student record.
+  // The JWT carries userId (User table PK), not the Student table PK.
+  const student = await prisma.student.findFirst({
+    where: { userId, schoolId, deletedAt: null },
+    select: { id: true },
+  });
+
+  if (!student) {
+    throw new AppError(404, "Student profile not found.");
+  }
+
+  // Step 2: Find this student's active session registration.
+  // This gives us the three values that fully identify the student's cohort:
+  //   sessionId      — which academic session they are in
+  //   batchYear      — which batch they belong to
+  //   semesterNumber — which semester they are currently studying
+  // All three are required to find the RIGHT faculty assignment.
+  const registration = await prisma.studentSessionRegistration.findFirst({
+    where: { studentId: student.id, schoolId, status: "active" },
+    select: { sessionId: true, batchYear: true, semesterNumber: true },
+  });
+
+  if (!registration) {
+    throw new AppError(404, "You are not registered in any active session.");
+  }
+
+  // Step 3: Look up the faculty assignment for exactly this student's context.
+  // Using all five dimensions ensures we match the correct assignment and
+  // never leak data from another batch or session.
+  const assignment = await repo.findForStudentSubject(
+    schoolId,
+    registration.sessionId,
+    parseInt(subjectId),
+    registration.batchYear,
+    registration.semesterNumber,
+  );
+
+  if (!assignment) {
+    throw new AppError(404, "No faculty assigned to this subject yet.");
+  }
+
+  return assignment;
+}
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -327,4 +408,5 @@ module.exports = {
   getMyAssignments,
   updateAssignment,
   deleteAssignment,
+  getFacultyForStudentSubject,
 };

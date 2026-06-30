@@ -382,6 +382,163 @@ async function getStudentsInSession(schoolId, sessionId, query) {
 }
 
 // =============================================================================
+// DETAIN / UNDETAIN A STUDENT
+// =============================================================================
+
+/**
+ * detainStudent
+ *
+ * Mark a student's session registration as "detained".
+ *
+ * What "detained" means:
+ *   The student has not met the requirements to advance to the next semester.
+ *   When the session is later completed, the automatic promotion logic only
+ *   promotes "active" registrations — "detained" students are skipped, so
+ *   their currentSemester stays exactly the same.
+ *
+ * Rules enforced here:
+ *   1. Registration must exist and belong to this school     → 404 otherwise
+ *   2. Session must still be open (not completed/archived)   → 403 otherwise
+ *   3. Already detained                                      → 409 conflict
+ *   4. Registration must be "active" to detain               → 400 otherwise
+ *
+ * @param {number} schoolId        - From JWT (school isolation)
+ * @param {number} registrationId  - The StudentSessionRegistration id (URL :id)
+ * @returns {{ message: string }}
+ */
+async function detainStudent(schoolId, registrationId) {
+  const regId = parseInt(registrationId);
+
+  // Load the registration together with its session status and student's userId
+  // so we can enforce rules and send a notification — all in one query.
+  const registration = await prisma.studentSessionRegistration.findFirst({
+    where: { id: regId, schoolId },
+    include: {
+      session: { select: { status: true, name: true } },
+      student: { select: { userId: true } },
+    },
+  });
+
+  // 404 — registration doesn't exist in this school
+  if (!registration) {
+    throw new AppError(404, "Student registration not found.");
+  }
+
+  // 403 — session is already closed; no modifications allowed
+  if (["completed", "archived"].includes(registration.session.status)) {
+    throw new AppError(
+      403,
+      `Cannot detain a student in a "${registration.session.status}" session.`
+    );
+  }
+
+  // 409 — already detained, nothing to do
+  if (registration.status === "detained") {
+    throw new AppError(409, "Student is already detained in this session.");
+  }
+
+  // 400 — registration is in some other unexpected state (e.g. "completed")
+  if (registration.status !== "active") {
+    throw new AppError(
+      400,
+      `Cannot detain a student whose registration status is "${registration.status}".`
+    );
+  }
+
+  // All checks passed — flip status to "detained"
+  await prisma.studentSessionRegistration.update({
+    where: { id: regId },
+    data: { status: "detained" },
+  });
+
+  // Notify the student so they know to contact their HOD
+  try {
+    await notify(
+      registration.student.userId,
+      "DETAINED",
+      `You have been detained in session "${registration.session.name}". Please contact your HOD for details.`,
+      "/student/session"
+    );
+  } catch (err) {
+    console.error("Failed to send detention notification:", err);
+  }
+
+  return { message: "Student has been detained successfully." };
+}
+
+/**
+ * undetainStudent
+ *
+ * Remove a student's detention — flip their registration back to "active".
+ *
+ * Once undetained, the student will again be included in the automatic
+ * semester promotion when the session is completed.
+ *
+ * Rules enforced here:
+ *   1. Registration must exist and belong to this school     → 404 otherwise
+ *   2. Session must still be open (not completed/archived)   → 403 otherwise
+ *   3. Registration must currently be "detained" to undetain → 400 otherwise
+ *
+ * @param {number} schoolId        - From JWT (school isolation)
+ * @param {number} registrationId  - The StudentSessionRegistration id (URL :id)
+ * @returns {{ message: string }}
+ */
+async function undetainStudent(schoolId, registrationId) {
+  const regId = parseInt(registrationId);
+
+  // Load the registration together with its session status and student's userId
+  const registration = await prisma.studentSessionRegistration.findFirst({
+    where: { id: regId, schoolId },
+    include: {
+      session: { select: { status: true, name: true } },
+      student: { select: { userId: true } },
+    },
+  });
+
+  // 404 — registration doesn't exist in this school
+  if (!registration) {
+    throw new AppError(404, "Student registration not found.");
+  }
+
+  // 403 — session is already closed; no modifications allowed
+  if (["completed", "archived"].includes(registration.session.status)) {
+    throw new AppError(
+      403,
+      `Cannot undetain a student in a "${registration.session.status}" session.`
+    );
+  }
+
+  // 400 — only a "detained" registration can be undetained
+  if (registration.status !== "detained") {
+    throw new AppError(
+      400,
+      `Cannot undetain a student whose registration status is "${registration.status}". ` +
+      `Only detained students can be undetained.`
+    );
+  }
+
+  // All checks passed — flip status back to "active"
+  await prisma.studentSessionRegistration.update({
+    where: { id: regId },
+    data: { status: "active" },
+  });
+
+  // Notify the student that their detention has been lifted
+  try {
+    await notify(
+      registration.student.userId,
+      "UNDETAINED",
+      `Your detention in session "${registration.session.name}" has been lifted. You are now active again.`,
+      "/student/session"
+    );
+  } catch (err) {
+    console.error("Failed to send undetain notification:", err);
+  }
+
+  return { message: "Student has been undetained successfully." };
+}
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -390,4 +547,6 @@ module.exports = {
   bulkRegisterStudents,
   getMySession,
   getStudentsInSession,
+  detainStudent,
+  undetainStudent,
 };

@@ -77,10 +77,27 @@ const deleteAssignment = asyncHandler(async (req, res) => {
   return success(res, 200 , result);
 });
 
+/**
+ * GET /api/faculty-assignments/student/subject/:subjectId
+ * Student views which faculty teaches a given subject in their own active session.
+ * The session/batch/semester scope is derived server-side from the student's
+ * registration — the student cannot supply or tamper with those values.
+ */
+const getFacultyForStudentSubject = asyncHandler(async (req, res) => {
+  const result = await service.getFacultyForStudentSubject(
+    req.user.userId,
+    req.user.schoolId,
+    req.params.subjectId
+  );
+
+  return success(res, 200, "Faculty fetched successfully", result);
+});
+
 module.exports = {
   createAssignment,
   getAllAssignments,
   getMyAssignments,
   updateAssignment,
   deleteAssignment,
+  getFacultyForStudentSubject,
 };

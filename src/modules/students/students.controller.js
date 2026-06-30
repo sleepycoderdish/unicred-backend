@@ -237,11 +237,95 @@ async function completeStudentProfile(
   }
 }
 
+/**
+ * =====================================================
+ * GET MY STUDENT PROFILE
+ * =====================================================
+ *
+ * Route:
+ *
+ * GET /students/profile/me
+ *
+ * Purpose:
+ *
+ * After login, frontend needs to know:
+ * "Has this student already filled their profile?"
+ *
+ * If YES -> show read-only profile view
+ * If NO  -> show the profile creation form
+ *
+ * userId comes from JWT (req.user), never from params.
+ */
+async function getMyStudentProfile(req, res) {
+  try {
+    const student =
+      await studentService.getMyStudentProfile(
+        req.user.userId
+      );
+
+    // No error if not found — frontend uses "data: null"
+    // to decide whether to show the form.
+    return success(
+      res,
+      200,
+      student
+        ? "Student profile fetched successfully"
+        : "Student profile not yet created",
+      student
+    );
+  } catch (err) {
+    return error(
+      res,
+      500,
+      err.message
+    );
+  }
+}
+
+/**
+ * GET /students/filter
+ *
+ * Returns students that match the provided query params.
+ * All params are optional — the same endpoint covers:
+ *
+ *   /students/filter                              → all students in school
+ *   /students/filter?departmentId=3               → all students in dept 3
+ *   /students/filter?departmentId=3&batchYear=2022 → dept 3, batch 2022
+ *   /students/filter?departmentId=3&batchYear=2022&semesterNumber=5
+ *                                                 → dept 3, batch 2022, sem 5
+ *
+ * Allowed roles: admin, faculty, hod (enforced in the route layer).
+ */
+async function getStudentsByFilters(req, res) {
+  try {
+    const students =
+      await studentService.getStudentsByFilters(
+        req.schoolId,
+        req.query
+      );
+
+    return success(
+      res,
+      200,
+      "Students fetched successfully",
+      students
+    );
+  } catch (err) {
+    return error(
+      res,
+      500,
+      err.message
+    );
+  }
+}
+
 module.exports = {
   getAllStudents,
   getStudentById,
   createStudent,
   updateStudent,
   deleteStudent,
-  completeStudentProfile
+  completeStudentProfile,
+  getMyStudentProfile,
+  getStudentsByFilters,
 };

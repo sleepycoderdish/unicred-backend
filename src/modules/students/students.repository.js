@@ -485,6 +485,70 @@ async function findActiveMarksForCgpa(
 }
 
 
+/**
+ * findByFilters
+ *
+ * Returns students that match ALL of the filters provided.
+ * Every filter is OPTIONAL — if you don't pass it, that column
+ * is simply not included in the WHERE clause.
+ *
+ * Why optional filters?
+ *   This lets a single endpoint cover many use-cases:
+ *
+ *   "All students in dept 3"
+ *     → { departmentId: 3 }
+ *
+ *   "All students in dept 3, batch 2022"
+ *     → { departmentId: 3, batchYear: 2022 }
+ *
+ *   "Students in dept 3, batch 2022, currently in semester 5"
+ *     → { departmentId: 3, batchYear: 2022, semesterNumber: 5 }
+ *
+ *   "All students in school (no filter)"
+ *     → {} (falls back to schoolId + deletedAt only)
+ *
+ * Note: the query param is called "semesterNumber" but the
+ * database column is "currentSemester" — we map it here so
+ * callers never need to know the internal column name.
+ *
+ * @param {number} schoolId
+ * @param {Object} filters
+ * @param {number} [filters.departmentId]  - optional department filter
+ * @param {number} [filters.batchYear]     - optional batch year filter
+ * @param {number} [filters.semesterNumber]- optional semester filter (maps → currentSemester)
+ */
+async function findByFilters(schoolId, { departmentId, batchYear, semesterNumber } = {}) {
+  // Build the WHERE clause dynamically.
+  // schoolId and deletedAt are ALWAYS required — they enforce multi-tenancy
+  // and soft-delete visibility. The optional filters are added only when
+  // the caller actually passed a value.
+  const where = {
+    schoolId,
+    deletedAt: null,
+  };
+
+  if (departmentId !== undefined) {
+    where.departmentId = departmentId;
+  }
+
+  if (batchYear !== undefined) {
+    where.batchYear = batchYear;
+  }
+
+  // semesterNumber from the query param maps to the currentSemester column
+  if (semesterNumber !== undefined) {
+    where.currentSemester = semesterNumber;
+  }
+
+  return prisma.student.findMany({
+    where,
+    include: {
+      user: true,
+      department: true,
+    },
+  });
+}
+
 module.exports = {
   findAllBySchool,
   findById,
@@ -501,4 +565,7 @@ module.exports = {
   // Result Queries
   findSubjectMarksByStudentId,
   findActiveMarksForCgpa,
+
+  // Filter Query
+  findByFilters,
 };

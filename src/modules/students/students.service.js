@@ -407,6 +407,58 @@ async function completeStudentProfile(
   });
 }
 
+/**
+ * =====================================================
+ * GET MY STUDENT PROFILE
+ * =====================================================
+ *
+ * Looks up the Student record linked to the
+ * currently logged-in user's userId.
+ *
+ * Returns null (not an error) if the student
+ * hasn't completed their profile yet —
+ * this is a normal, expected state right after
+ * registration, not a failure.
+ */
+async function getMyStudentProfile(userId) {
+  return studentRepository.findByUserId(userId);
+}
+
+
+/**
+ * getStudentsByFilters
+ *
+ * Fetches students belonging to the caller's school,
+ * narrowed down by whichever query params the caller provides.
+ *
+ * All three filters are optional — pass none and you get every
+ * student in the school; pass all three and you get a very
+ * specific slice (e.g. "CSE batch 2022 currently in sem 5").
+ *
+ * Why parse here instead of in the controller?
+ *   Query params arrive as STRINGS (e.g. "3", "2022").
+ *   The repository expects NUMBERS so Prisma can build a
+ *   correct WHERE clause. Service is the right place to
+ *   convert types and ignore empty/missing values.
+ *
+ * @param {number} schoolId - always comes from JWT (never trust frontend)
+ * @param {Object} query    - raw req.query object from Express
+ */
+async function getStudentsByFilters(schoolId, query) {
+  // Helper: parse a query param to int only if it's a non-empty string.
+  // Returns undefined (not NaN) when the param is absent or blank,
+  // so the repository knows to skip that filter entirely.
+  const parseIfPresent = (val) =>
+    val !== undefined && val !== "" ? parseInt(val, 10) : undefined;
+
+  const filters = {
+    departmentId:  parseIfPresent(query.departmentId),
+    batchYear:     parseIfPresent(query.batchYear),
+    semesterNumber: parseIfPresent(query.semesterNumber),
+  };
+
+  return studentRepository.findByFilters(schoolId, filters);
+}
 
 module.exports = {
   getAllStudents,
@@ -414,5 +466,7 @@ module.exports = {
   createStudent,
   updateStudent,
   deleteStudent,
-  completeStudentProfile
+  completeStudentProfile,
+  getMyStudentProfile,
+  getStudentsByFilters,
 };

@@ -200,15 +200,15 @@ async function findById(assignmentId, schoolId) {
  * @param {number} batchYear  - Batch year
  * @returns {Promise<Object|null>}
  */
-async function findDuplicate(sessionId, facultyId, subjectId, batchYear) {
+async function findDuplicate(schoolId, sessionId, facultyId, subjectId, batchYear) {
   return prisma.facultyAssignment.findFirst({
     where: {
+      schoolId,    // added — enforces tenant isolation
       sessionId,
       facultyId,
       subjectId,
       batchYear,
     },
-
     select: { id: true },
   });
 }
@@ -288,6 +288,68 @@ async function deleteAssignment(assignmentId, schoolId) {
 }
 
 // =============================================================================
+// STUDENT-FACING QUERY
+// =============================================================================
+
+/**
+ * findForStudentSubject
+ *
+ * Looks up the faculty assignment for a specific subject,
+ * scoped to an EXACT combination of session + batch + semester.
+ *
+ * Why so many filters?
+ *   The same subject (e.g. "DBMS") can be taught by DIFFERENT faculty in
+ *   different sessions or for different batches/semesters.
+ *   Without all five filters, we could accidentally return Dr. A (who taught
+ *   Batch 2021 Sem 3) when a Batch 2023 student asks about their teacher.
+ *
+ * The caller (service layer) derives sessionId, batchYear, and semesterNumber
+ * from the student's own active registration — so a student can NEVER query
+ * outside their own cohort.
+ *
+ * @param {number} schoolId       - School isolation (always required)
+ * @param {number} sessionId      - The student's current session
+ * @param {number} subjectId      - The subject the student is asking about
+ * @param {number} batchYear      - The student's batch year
+ * @param {number} semesterNumber - The student's current semester
+ * @returns {Promise<Object|null>}
+ */
+async function findForStudentSubject(schoolId, sessionId, subjectId, batchYear, semesterNumber) {
+  return prisma.facultyAssignment.findFirst({
+    where: {
+      schoolId,
+      sessionId,
+      subjectId,
+      batchYear,
+      semesterNumber,
+    },
+
+    select: {
+      id: true,
+      faculty: {
+        select: {
+          id: true,
+          designation: true,
+          officeLocation: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              bio: true,
+              profilePhotoUrl: true,
+              linkedinUrl: true,
+              githubUrl: true,
+              portfolioUrl: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -300,4 +362,5 @@ module.exports = {
   findAssignmentForSubject,
   updateAssignment,
   deleteAssignment,
+  findForStudentSubject,
 };

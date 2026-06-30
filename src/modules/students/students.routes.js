@@ -9,6 +9,8 @@ const {
   updateStudent,
   deleteStudent,
   completeStudentProfile,
+  getMyStudentProfile,
+  getStudentsByFilters,
 } = require("./students.controller");
 
 const authenticate = require("../../middleware/auth.middleware");
@@ -97,6 +99,61 @@ router.post(
  * - faculty
  * - hod
  */
+
+/**
+ * =====================================================
+ * GET MY STUDENT PROFILE
+ * =====================================================
+ *
+ * Route:
+ *
+ * GET /students/profile/me
+ *
+ * Access:
+ *
+ * STUDENT only
+ *
+ * Purpose:
+ *
+ * Lets a logged-in student check whether
+ * they've already completed their profile.
+ *
+ * MUST be registered before /:id route,
+ * otherwise Express matches "profile" as an :id param.
+ */
+router.get(
+  "/profile/me",
+  authenticate,
+  requireRole("student"),
+  getMyStudentProfile,
+);
+
+/**
+ * GET /students/filter
+ *
+ * Filter students by department, batch year, and/or semester number.
+ * All query params are optional — mix and match as needed:
+ *
+ *   ?departmentId=3
+ *   ?batchYear=2022
+ *   ?semesterNumber=5
+ *   ?departmentId=3&batchYear=2022&semesterNumber=5
+ *
+ * IMPORTANT — this route MUST be registered before "/:id".
+ * Express matches routes top-to-bottom. If "/:id" came first,
+ * a request to "/filter" would be treated as id = "filter"
+ * and hit the wrong handler.
+ *
+ * Allowed: admin, faculty, hod
+ */
+router.get(
+  "/filter",
+  authenticate,
+  tenantMiddleware,
+  requireRole("admin", "faculty", "hod"),
+  getStudentsByFilters,
+);
+
 router.get(
   "/:id",
   authenticate,
