@@ -96,6 +96,15 @@ async function createAssignment(
     throw new AppError(404, "Faculty member not found in this school.");
   }
 
+  // ── Validate faculty belongs to the HOD's own department ───────────────────
+  // An HOD must only be able to assign faculty from their own department.
+  // Without this check, an HOD could assign a faculty member from another
+  // department, creating a FacultyAssignment (and later a
+  // FacultyResultSubmission) that leaks across department boundaries.
+  if (faculty.departmentId !== hodDepartmentId) {
+    throw new AppError(400, "Faculty does not belong to this department.");
+  }
+
   // ── Validate subject is offered in this session for this batch ────────────
   // Faculty can only be assigned to offered subjects —
   // not any subject in the department.

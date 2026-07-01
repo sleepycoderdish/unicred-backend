@@ -97,6 +97,16 @@ async function invalidateOriginalMark(studentId, subjectId, sessionId) {
 
 /**
  * Gets all approved reappear applications for subjects assigned to a faculty.
+ *
+ * Each returned row also carries a resolved `publicationId`. The
+ * reappearApplication table has no direct foreign key to a ResultPublication,
+ * but POST /results/submit-reappear requires one. ResultPublication has a
+ * unique index on (sessionId, departmentId, batchYear, semesterNumber), and
+ * an application's session/semester plus its student's department/batchYear
+ * are exactly that key — so we look up the matching PUBLISHED publication
+ * for each application and attach its id. A batched findMany (one extra
+ * query total) is used instead of one lookup per application to avoid N+1
+ * queries.
  */
 async function getActiveReappearForFaculty(facultyId, schoolId) {
   const assignments = await prisma.facultyAssignment.findMany({
@@ -105,7 +115,7 @@ async function getActiveReappearForFaculty(facultyId, schoolId) {
   });
   if (!assignments.length) return [];
 
-  return prisma.reappearApplication.findMany({
+  const applications = await prisma.reappearApplication.findMany({
     where: {
       schoolId,
       status: "approved",
@@ -118,6 +128,41 @@ async function getActiveReappearForFaculty(facultyId, schoolId) {
     },
     orderBy: { createdAt: "asc" },
   });
+  if (!applications.length) return [];
+
+  // Fetch every PUBLISHED publication that could match any application's
+  // (sessionId, departmentId, batchYear, semesterNumber) combo, in one query.
+  const publications = await prisma.resultPublication.findMany({
+    where: {
+      status: "published",
+      OR: applications.map((a) => ({
+        sessionId: a.sessionId,
+        departmentId: a.student.departmentId,
+        batchYear: a.student.batchYear,
+        semesterNumber: a.semesterNumber,
+      })),
+    },
+    select: { id: true, sessionId: true, departmentId: true, batchYear: true, semesterNumber: true },
+  });
+
+  // Join key built from the same 4 fields on both sides, so each application
+  // can find its match in a Map lookup instead of re-scanning the list.
+  const keyOf = (o) => `${o.sessionId}_${o.departmentId}_${o.batchYear}_${o.semesterNumber}`;
+  const publicationIdByKey = new Map(publications.map((p) => [keyOf(p), p.id]));
+
+  return applications.map((a) => ({
+    ...a,
+    // null when no published publication exists yet for this combo — the
+    // frontend should treat that as "not ready to submit reappear marks".
+    publicationId: publicationIdByKey.get(
+      keyOf({
+        sessionId:      a.sessionId,
+        departmentId:   a.student.departmentId,
+        batchYear:      a.student.batchYear,
+        semesterNumber: a.semesterNumber,
+      })
+    ) ?? null,
+  }));
 }
 
 module.exports = {

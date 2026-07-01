@@ -20,12 +20,22 @@ async function createPublication(schoolId, sessionId, departmentId, batchYear, s
     // FacultyResultSubmission rows that can never be submitted, blocking publication.
     const assignments = await tx.facultyAssignment.findMany({
       where: { schoolId, sessionId, departmentId, batchYear, semesterNumber },
+      include: { faculty: { select: { departmentId: true } } },
     });
 
-    // Auto-create one submission tracker row per assignment
-    if (assignments.length > 0) {
+    // Defense in depth: only keep assignments whose faculty actually belongs
+    // to this department. The query above already filters by the assignment's
+    // own departmentId, but old/bad rows could still point to a faculty from
+    // a different department — skipping them here stops a cross-department
+    // FacultyResultSubmission from ever being created.
+    const validAssignments = assignments.filter(
+      (a) => a.faculty.departmentId === departmentId
+    );
+
+    // Auto-create one submission tracker row per valid assignment
+    if (validAssignments.length > 0) {
       await tx.facultyResultSubmission.createMany({
-        data: assignments.map((a) => ({
+        data: validAssignments.map((a) => ({
           schoolId,
           publicationId: publication.id,
           facultyId: a.facultyId,
