@@ -126,7 +126,10 @@ async function findAssignedForFaculty(facultyId, status, skip, take) {
   return prisma.achievementReview.findMany({
     where: {
       facultyId,
-      ...(status ? { status } : {}),
+      // Filter by the achievement's OVERALL status (not this faculty's own
+      // verdict) so the queue tabs reflect where the achievement actually
+      // stands — e.g. one approved by every reviewer shows under "Approved".
+      ...(status ? { achievement: { status } } : {}),
     },
     orderBy: { createdAt: "asc" }, // oldest request first = fair queue
     skip,
@@ -152,10 +155,10 @@ async function findAssignedForFaculty(facultyId, status, skip, take) {
   });
 }
 
-/** Count a faculty's assigned reviews (optionally by their own verdict). */
+/** Count a faculty's assigned reviews (optionally by the achievement's overall status). */
 async function countAssignedForFaculty(facultyId, status) {
   return prisma.achievementReview.count({
-    where: { facultyId, ...(status ? { status } : {}) },
+    where: { facultyId, ...(status ? { achievement: { status } } : {}) },
   });
 }
 

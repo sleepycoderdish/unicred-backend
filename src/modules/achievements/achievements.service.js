@@ -55,21 +55,22 @@ function paginate(items, page, limit, total) {
 }
 
 /**
- * THE ROLLUP RULE (Option B). Given every per-faculty review, decide the
- * achievement's overall status.
- *   - any one approved          -> "approved"
+ * THE ROLLUP RULE (unanimous approval). Given every per-faculty review,
+ * decide the achievement's overall status.
+ *   - any one rejected           -> "rejected"
+ *     (a single reject makes unanimous approval impossible, so it's settled)
  *   - at least one review AND
- *     every review rejected      -> "rejected"
- *   - otherwise                  -> "pending"
+ *     every review approved       -> "approved"
+ *   - otherwise                   -> "pending"
+ *     (still waiting on one or more assigned reviewers)
  *
  * @param {Array<{status:string}>} reviews
  * @returns {"approved"|"rejected"|"pending"}
  */
 function computeOverallStatus(reviews) {
-  if (reviews.some((r) => r.status === "approved")) return "approved";
-  if (reviews.length > 0 && reviews.every((r) => r.status === "rejected")) {
-    return "rejected";
-  }
+  if (reviews.length === 0) return "pending";
+  if (reviews.some((r) => r.status === "rejected")) return "rejected";
+  if (reviews.every((r) => r.status === "approved")) return "approved";
   return "pending";
 }
 
@@ -426,8 +427,8 @@ async function _recordDecision(achievementId, facultyId, newStatus, remark) {
     // 3. Build the rollup update on the parent achievement.
     const data = { status: overall };
     if (overall === "approved") {
-      // The faculty acting now is the FIRST approver (earlier approvals would
-      // have already flipped overall to approved and been blocked upstream).
+      // Unanimous approval just completed — the faculty acting now is the
+      // LAST approver (the one whose approval made every review "approved").
       data.verifiedBy          = facultyId;
       data.verifiedAt          = new Date();
       data.verificationComment = isNonEmptyString(remark) ? remark.trim() : null;
@@ -471,25 +472,32 @@ async function _assertCanReview(achievementId, facultyId) {
   return review;
 }
 
-/** Faculty approves their review. Remark optional. Any approve -> overall approved. */
+/** Faculty approves their review. Remark optional. Approved only once ALL approve. */
 async function verifyAchievement(achievementId, facultyId, remark) {
   const id = Number(achievementId);
   await _assertCanReview(id, facultyId);
 
   const { overall, achievement } = await _recordDecision(id, facultyId, "approved", remark);
 
-  // Any single approval verifies the achievement -> always notify the student.
-  await notify(
-    achievement.student.user.id,
-    NOTIFICATION_TYPES.ACHIEVEMENT_APPROVED,
-    `Your achievement "${achievement.title}" was approved.`,
-    STUDENT_ACHIEVEMENT_LINK(id)
-  );
+  // Only notify the student once EVERY assigned reviewer has approved and the
+  // achievement is fully verified. While others are still pending, stay quiet.
+  if (overall === "approved") {
+    await notify(
+      achievement.student.user.id,
+      NOTIFICATION_TYPES.ACHIEVEMENT_APPROVED,
+      `Your achievement "${achievement.title}" was approved.`,
+      STUDENT_ACHIEVEMENT_LINK(id)
+    );
+  }
 
-  return { overallStatus: overall, message: "Your approval was recorded." };
+  const message =
+    overall === "approved"
+      ? "Final approval recorded — the achievement is now approved."
+      : "Your approval was recorded. Waiting on the other reviewers.";
+  return { overallStatus: overall, message };
 }
 
-/** Faculty rejects their review. Remark REQUIRED. Overall rejects only when all reject. */
+/** Faculty rejects their review. Remark REQUIRED. A single rejection rejects overall. */
 async function rejectAchievement(achievementId, facultyId, remark) {
   const id = Number(achievementId);
 
@@ -501,8 +509,8 @@ async function rejectAchievement(achievementId, facultyId, remark) {
 
   const { overall, achievement } = await _recordDecision(id, facultyId, "rejected", remark);
 
-  // Only notify the student once the achievement is fully rejected by everyone.
-  // While other faculties are still pending, there is still hope — stay quiet.
+  // A single rejection settles the achievement as rejected (unanimous
+  // approval is no longer possible), so notify the student right away.
   if (overall === "rejected") {
     await notify(
       achievement.student.user.id,
