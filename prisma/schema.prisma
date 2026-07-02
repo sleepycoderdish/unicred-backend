@@ -34,6 +34,9 @@ model School {
   internalAssessments      InternalAssessment[]
   syllabi                  Syllabus[]
   gradingSystems           GradingSystem[]
+  scheduleExceptions       ScheduleException[]
+  facultyAbsences          FacultyAbsence[]
+  absenceSubstitutions     AbsenceSubstitution[]
 
   @@map("schools")
 }
@@ -73,20 +76,21 @@ model User {
 }
 
 model Department {
-  id               Int               @id @default(autoincrement())
-  schoolId         Int
-  name             String
-  hodUserId        Int?
-  createdAt        DateTime          @default(now())
-  deletedAt        DateTime?
-  updatedAt        DateTime          @updatedAt
-  school           School            @relation(fields: [schoolId], references: [id])
-  hod              User?             @relation("DepartmentHod", fields: [hodUserId], references: [id])
-  faculty          Faculty[]
-  students         Student[]
-  announcements    Announcement[]
-  academicSessions AcademicSession[]
-  subjects         Subject[]
+  id                 Int                 @id @default(autoincrement())
+  schoolId           Int
+  name               String
+  hodUserId          Int?
+  createdAt          DateTime            @default(now())
+  deletedAt          DateTime?
+  updatedAt          DateTime            @updatedAt
+  school             School              @relation(fields: [schoolId], references: [id])
+  hod                User?               @relation("DepartmentHod", fields: [hodUserId], references: [id])
+  faculty            Faculty[]
+  students           Student[]
+  announcements      Announcement[]
+  academicSessions   AcademicSession[]
+  subjects           Subject[]
+  scheduleExceptions ScheduleException[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -153,6 +157,8 @@ model Faculty {
   attendanceMarked         Attendance[]
   internalAssessments      InternalAssessment[]
   syllabi                  Syllabus[]
+  absences                 FacultyAbsence[]          @relation("AbsenceOwner")
+  substituteFor            AbsenceSubstitution[]     @relation("SubstituteFor")
 
   @@index([schoolId])
   @@index([departmentId])
@@ -232,6 +238,8 @@ model AcademicSession {
   attendance           Attendance[]
   internalAssessments  InternalAssessment[]
   achievements         Achievement[]
+  scheduleExceptions   ScheduleException[]
+  facultyAbsences      FacultyAbsence[]
 
   @@index([schoolId, departmentId])
   @@index([schoolId, status])
@@ -510,22 +518,23 @@ model Timetable {
 }
 
 model TimetableSlot {
-  id          Int       @id @default(autoincrement())
-  schoolId    Int
-  timetableId Int
-  subjectId   Int
-  facultyId   Int
-  dayOfWeek   Int
-  startTime   String
-  endTime     String
-  classroom   String
-  slotType    SlotType  @default(lecture)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  school      School    @relation(fields: [schoolId], references: [id])
-  timetable   Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
-  subject     Subject   @relation(fields: [subjectId], references: [id])
-  faculty     Faculty   @relation(fields: [facultyId], references: [id])
+  id                   Int                   @id @default(autoincrement())
+  schoolId             Int
+  timetableId          Int
+  subjectId            Int
+  facultyId            Int
+  dayOfWeek            Int
+  startTime            String
+  endTime              String
+  classroom            String
+  slotType             SlotType              @default(lecture)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  school               School                @relation(fields: [schoolId], references: [id])
+  timetable            Timetable             @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  subject              Subject               @relation(fields: [subjectId], references: [id])
+  faculty              Faculty               @relation(fields: [facultyId], references: [id])
+  absenceSubstitutions AbsenceSubstitution[]
 
   @@index([schoolId])
   @@index([timetableId])
@@ -755,6 +764,96 @@ model GradeRule {
 
   @@index([gradingSystemId])
   @@map("grade_rules")
+}
+
+model ScheduleException {
+  id               Int             @id @default(autoincrement())
+  schoolId         Int
+  sessionId        Int
+  departmentId     Int?
+  startDate        DateTime
+  endDate          DateTime
+  type             ExceptionType
+  scope            ExceptionScope
+  startTime        String?
+  endTime          String?
+  reason           String
+  declaredByUserId Int
+  revokedAt        DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  school           School          @relation(fields: [schoolId], references: [id])
+  session          AcademicSession @relation(fields: [sessionId], references: [id])
+  department       Department?     @relation(fields: [departmentId], references: [id])
+
+  @@index([departmentId])
+  @@index([schoolId])
+  @@index([sessionId])
+  @@index([schoolId, startDate, endDate])
+  @@map("schedule_exceptions")
+}
+
+model FacultyAbsence {
+  id              Int                   @id @default(autoincrement())
+  schoolId        Int
+  sessionId       Int
+  facultyId       Int
+  startDate       DateTime
+  endDate         DateTime
+  reason          String                @db.Text
+  status          AbsenceStatus         @default(pending)
+  hodComment      String?
+  reviewedByHodId Int?
+  reviewedAt      DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  school          School                @relation(fields: [schoolId], references: [id])
+  session         AcademicSession       @relation(fields: [sessionId], references: [id])
+  faculty         Faculty               @relation("AbsenceOwner", fields: [facultyId], references: [id])
+  substitutions   AbsenceSubstitution[]
+
+  @@index([schoolId])
+  @@index([facultyId])
+  @@index([sessionId])
+  @@map("faculty_absences")
+}
+
+model AbsenceSubstitution {
+  id                  Int            @id @default(autoincrement())
+  schoolId            Int
+  absenceId           Int
+  timetableSlotId     Int
+  date                DateTime
+  substituteFacultyId Int?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  school              School         @relation(fields: [schoolId], references: [id])
+  absence             FacultyAbsence @relation(fields: [absenceId], references: [id], onDelete: Cascade)
+  slot                TimetableSlot  @relation(fields: [timetableSlotId], references: [id])
+  substituteFaculty   Faculty?       @relation("SubstituteFor", fields: [substituteFacultyId], references: [id])
+
+  @@unique([absenceId, timetableSlotId, date])
+  @@index([schoolId])
+  @@index([absenceId])
+  @@index([timetableSlotId])
+  @@index([substituteFacultyId])
+  @@map("absence_substitutions")
+}
+
+enum ExceptionType {
+  HOLIDAY
+  HALF_DAY
+}
+
+enum AbsenceStatus {
+  pending
+  approved
+  rejected
+}
+
+enum ExceptionScope {
+  SCHOOL
+  DEPARTMENT
 }
 
 enum Role {

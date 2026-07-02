@@ -1,3 +1,5 @@
+//src/modules/achievements/achievements.service.js
+
 // =============================================================================
 // ACHIEVEMENTS SERVICE  (multi-faculty / Option B)
 // =============================================================================

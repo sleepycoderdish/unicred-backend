@@ -54,7 +54,10 @@ const studentResultRoutes  =    require("../modules/results/student-results.rout
 const achievementRoutes    =    require("../modules/achievements/achievements.routes");
 const internshipRoutes     =    require("../modules/internships/internships.routes");
 const uploadRoutes         =    require("../modules/uploads/uploads.routes");
-
+const timetableRoutes      =    require("../modules/timetables/timetables.routes");
+const adminTimetableRoutes =    require("../modules/timetables/timetables.admin.routes");
+const scheduleExceptionRoutes = require("../modules/schedule-exceptions/schedule-exceptions.routes");
+const facultyAbsenceRoutes    = require("../modules/faculty-absences/faculty-absences.routes");
 /*
 |--------------------------------------------------------------------------
 | Route Registration
@@ -111,6 +114,18 @@ router.use("/internships", internshipRoutes);
 
 // Uploads — generic Cloudinary file upload (certificates, proofs, offer letters)
 router.use("/uploads", uploadRoutes);
+
+// Timetables — HOD builds the weekly schedule, submits for approval
+router.use("/timetables", timetableRoutes);
+
+// Admin timetable review — approve / return submitted timetables
+router.use("/admin/timetables", adminTimetableRoutes);
+
+// Schedule exceptions — holidays & half-days (admin school-wide, HOD dept-only)
+router.use("/schedule-exceptions", scheduleExceptionRoutes);
+
+// Faculty absences — teacher files leave, HOD approves + assigns substitutes
+router.use("/faculty-absences", facultyAbsenceRoutes);
  
  
 
